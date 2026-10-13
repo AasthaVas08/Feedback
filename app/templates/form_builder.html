@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Create Form{% endblock %}
+
+{% block content %}
+<div class="page__header">
+  <h1 class="page__title">Create a New Form</h1>
+  <p class="page__subtitle">Add questions, set a closing date, and publish to notify employees.</p>
+</div>
+
+<!-- Step 1: Form details -->
+<div class="card mb-6" id="formDetails">
+  <h2 style="font-size:var(--text-lg); font-weight:var(--weight-semibold); margin-bottom:var(--space-4)">Form Details</h2>
+  <div class="form-group">
+    <label class="form-label" for="formTitle">Title <span class="required">*</span></label>
+    <input type="text" id="formTitle" class="form-input" placeholder="e.g. Q4 Employee Satisfaction Survey" required>
+  </div>
+  <div class="form-group">
+    <label class="form-label" for="formDesc">Description</label>
+    <textarea id="formDesc" class="form-textarea" placeholder="Optional description or instructions for respondents" rows="3"></textarea>
+  </div>
+  <div class="form-group">
+    <label class="form-label" for="formCloses">Closing Date</label>
+    <input type="datetime-local" id="formCloses" class="form-input">
+    <p class="form-hint">Leave empty for no deadline.</p>
+  </div>
+  <button class="btn btn--primary" id="btnCreateForm">Create Form</button>
+</div>
+
+<!-- Step 2: Questions (shown after form is created) -->
+<div id="questionsSection" class="hidden">
+  <div class="flex-between mb-4">
+    <h2 style="font-size:var(--text-lg); font-weight:var(--weight-semibold)">Questions</h2>
+    <div class="flex gap-2">
+      <button class="btn btn--secondary btn--sm" onclick="Builder.addQuestion('text')">+ Text</button>
+      <button class="btn btn--secondary btn--sm" onclick="Builder.addQuestion('multiple_choice')">+ Multiple Choice</button>
+      <button class="btn btn--secondary btn--sm" onclick="Builder.addQuestion('rating')">+ Rating</button>
+      <button class="btn btn--secondary btn--sm" onclick="Builder.addQuestion('checkbox')">+ Checkbox</button>
+    </div>
+  </div>
+
+  <div id="questionsList"></div>
+
+  <div id="emptyQuestions" class="empty-state">
+    <div class="empty-state__icon">❓</div>
+    <div class="empty-state__title">No questions yet</div>
+    <div class="empty-state__desc">Add questions using the buttons above.</div>
+  </div>
+
+  <div style="margin-top:var(--space-6); display:flex; gap:var(--space-3)">
+    <button class="btn btn--primary" id="btnPublish" disabled>Publish Form</button>
+    <span id="formIdDisplay" class="text-sm text-muted" style="align-self:center"></span>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var Builder = (function () {
+  var app = window.FeedbackApp;
+  var formId = null;
+  var questions = [];
+  var dragSrcIndex = null;
+
+  /* ── Create form ─────────────────────────────────────────────── */
+  document.getElementById('btnCreateForm').addEventListener('click', function () {
+    var title = document.getElementById('formTitle').value.trim();
+    if (!title) { app.toast('Title is required', 'error'); return; }
+
+    var body = {
+      title: title,
+      description: document.getElementById('formDesc').value.trim() || null,
+      owner_id: app.getUserId(),
+      closes_at: document.getElementById('formCloses').value
+        ? new Date(document.getElementById('formCloses').value).toISOString()
+        : null
+    };
+
+    app.api('/api/forms', 'POST', body).then(function (form) {
+      formId = form.id;
+      document.getElementById('formDetails').style.opacity = '0.6';
+      document.getElementById('formDetails').style.pointerEvents = 'none';
+      document.getElementById('questionsSection').classList.remove('hidden');
+      document.getElementById('formIdDisplay').textContent = 'Form ID: ' + formId;
+      app.toast('Form created!', 'success');
+    }).catch(function (err) {
+      app.toast(err.data ? err.data.error : 'Failed to create form', 'error');
+    });
+  });
+
+  /* ── Add question ────────────────────────────────────────────── */
+  function addQuestion(type) {
+    var q = { type: type, text: '', options: ['', ''], tempId: Date.now() };
+    questions.push(q);
+    renderQuestions();
+  }
+
+  /* ── Render questions ────────────────────────────────────────── */
+  function renderQuestions() {
+    var list = document.getElementById('questionsList');
+    var empty = document.getElementById('emptyQuestions');
+    var publish = document.getElementById('btnPublish');
+
+    if (!questions.length) {
+      list.innerHTML = '';
+      empty.classList.remove('hidden');
+      publish.disabled = true;
+      return;
+    }
+    empty.classList.add('hidden');
+
+    list.innerHTML = questions.map(function (q, i) {
+      var typeLabel = { text: 'Text', multiple_choice: 'Multiple Choice', rating: 'Rating', checkbox: 'Checkbox' };
+      var optionsHtml = '';
+
+      if (q.type === 'multiple_choice' || q.type === 'checkbox') {
+        optionsHtml = '<div class="form-group"><label class="form-label">Options</label>'
+          + '<div class="options-list" id="opts-' + i + '">'
+          + (q.options || []).map(function (opt, oi) {
+            return '<div class="option-row">'
+              + '<input type="text" class="form-input" value="' + escapeAttr(opt) + '" '
+              + 'onchange="Builder.updateOption(' + i + ',' + oi + ',this.value)" placeholder="Option ' + (oi + 1) + '">'
+              + '<button class="btn btn--ghost btn--sm btn--icon" onclick="Builder.removeOption(' + i + ',' + oi + ')" title="Remove">'
+              + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>'
+              + '</button></div>';
+          }).join('')
+          + '</div>'
+          + '<button class="btn btn--ghost btn--sm mt-2" onclick="Builder.addOption(' + i + ')">+ Add Option</button>'
+          + '</div>';
+      }
+
+      return '<div class="question-card" draggable="true" data-index="' + i + '" '
+        + 'ondragstart="Builder.dragStart(event,' + i + ')" '
+        + 'ondragover="Builder.dragOver(event)" '
+        + 'ondragenter="Builder.dragEnter(event)" '
+        + 'ondragleave="Builder.dragLeave(event)" '
+        + 'ondrop="Builder.drop(event,' + i + ')" '
+        + 'ondragend="Builder.dragEnd(event)">'
+        + '<div class="question-card__header">'
+        + '<span class="question-card__drag" title="Drag to reorder">'
+        + '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="5" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="19" r="1"/></svg>'
+        + '</span>'
+        + '<span class="question-card__number">Q' + (i + 1) + '</span>'
+        + '<span class="badge badge--neutral">' + typeLabel[q.type] + '</span>'
+        + '<div class="question-card__actions">'
+        + '<button class="btn btn--ghost btn--sm btn--icon" onclick="Builder.removeQuestion(' + i + ')" title="Delete">'
+        + '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>'
+        + '</button></div></div>'
+        + '<div class="question-card__body">'
+        + '<div class="form-group"><label class="form-label">Question Text <span class="required">*</span></label>'
+        + '<input type="text" class="form-input" value="' + escapeAttr(q.text) + '" '
+        + 'onchange="Builder.updateText(' + i + ',this.value)" placeholder="Enter your question"></div>'
+        + optionsHtml
+        + '</div></div>';
+    }).join('');
+
+    publish.disabled = false;
+  }
+
+  /* ── Question mutations ──────────────────────────────────────── */
+  function updateText(i, val) { questions[i].text = val; }
+  function updateOption(qi, oi, val) { questions[qi].options[oi] = val; }
+  function addOption(qi) { questions[qi].options.push(''); renderQuestions(); }
+  function removeOption(qi, oi) {
+    if (questions[qi].options.length <= 2) { app.toast('At least 2 options required', 'error'); return; }
+    questions[qi].options.splice(oi, 1); renderQuestions();
+  }
+  function removeQuestion(i) { questions.splice(i, 1); renderQuestions(); }
+
+  /* ── Drag and drop ───────────────────────────────────────────── */
+  function dragStart(e, i) { dragSrcIndex = i; e.target.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; }
+  function dragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }
+  function dragEnter(e) { e.preventDefault(); var card = e.target.closest('.question-card'); if (card) card.classList.add('drag-over'); }
+  function dragLeave(e) { var card = e.target.closest('.question-card'); if (card) card.classList.remove('drag-over'); }
+  function drop(e, targetIndex) {
+    e.preventDefault();
+    var card = e.target.closest('.question-card'); if (card) card.classList.remove('drag-over');
+    if (dragSrcIndex === null || dragSrcIndex === targetIndex) return;
+    var moved = questions.splice(dragSrcIndex, 1)[0];
+    questions.splice(targetIndex, 0, moved);
+    dragSrcIndex = null;
+    renderQuestions();
+  }
+  function dragEnd(e) { e.target.classList.remove('dragging'); dragSrcIndex = null; }
+
+  /* ── Publish ─────────────────────────────────────────────────── */
+  document.getElementById('btnPublish').addEventListener('click', function () {
+    if (!formId) return;
+    var btn = this; btn.disabled = true; btn.textContent = 'Saving questions…';
+
+    // Save all questions sequentially
+    var chain = Promise.resolve();
+    questions.forEach(function (q, i) {
+      chain = chain.then(function () {
+        var text = q.text.trim();
+        if (!text) return Promise.reject({ data: { error: 'Question ' + (i + 1) + ' has no text' } });
+        var body = { question_text: text, question_type: q.type, order: i + 1 };
+        if ((q.type === 'multiple_choice' || q.type === 'checkbox') && q.options) {
+          var opts = q.options.filter(function (o) { return o.trim(); });
+          if (opts.length < 2) return Promise.reject({ data: { error: 'Question ' + (i + 1) + ' needs at least 2 options' } });
+          body.options = opts;
+        }
+        return app.api('/api/forms/' + formId + '/questions', 'POST', body);
+      });
+    });
+
+    chain.then(function () {
+      btn.textContent = 'Publishing…';
+      return app.api('/api/forms/' + formId + '/publish', 'POST');
+    }).then(function (res) {
+      app.toast('Form published! ' + res.notifications_queued + ' employees notified.', 'success');
+      setTimeout(function () { window.location.href = '/'; }, 1500);
+    }).catch(function (err) {
+      btn.disabled = false; btn.textContent = 'Publish Form';
+      app.toast(err.data ? err.data.error : 'Failed to publish', 'error');
+    });
+  });
+
+  function escapeAttr(s) { return (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+  return {
+    addQuestion: addQuestion, updateText: updateText,
+    updateOption: updateOption, addOption: addOption,
+    removeOption: removeOption, removeQuestion: removeQuestion,
+    dragStart: dragStart, dragOver: dragOver, dragEnter: dragEnter,
+    dragLeave: dragLeave, drop: drop, dragEnd: dragEnd
+  };
+})();
+</script>
+{% endblock %}

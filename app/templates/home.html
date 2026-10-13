@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+
+{% block content %}
+<div class="hero">
+  <h1 class="hero__title">Feedback Platform</h1>
+  <p class="hero__desc">Create questionnaires, collect responses, and reward early participants — all in one place.</p>
+  <div class="flex-center gap-3">
+    <a href="{{ url_for('views.form_builder') }}" class="btn btn--primary">Create a Form</a>
+    <a href="{{ url_for('views.dashboard') }}" class="btn btn--secondary">View Dashboard</a>
+  </div>
+</div>
+
+<div class="flex-between mb-6">
+  <h2 class="page__title">Published Forms</h2>
+</div>
+
+<div id="formsList">
+  <div class="card" style="margin-bottom:var(--space-4)">
+    <div class="skeleton skeleton--title"></div>
+    <div class="skeleton skeleton--text"></div>
+    <div class="skeleton skeleton--text" style="width:40%"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var app = window.FeedbackApp;
+  var container = document.getElementById('formsList');
+
+  app.api('/api/forms').then(function (forms) {
+    var published = forms.filter(function (f) { return f.is_published; });
+    if (!published.length) {
+      container.innerHTML =
+        '<div class="empty-state">'
+        + '<div class="empty-state__icon">📋</div>'
+        + '<div class="empty-state__title">No published forms yet</div>'
+        + '<div class="empty-state__desc">Create and publish a form to get started.</div>'
+        + '<a href="/create" class="btn btn--primary">Create Form</a>'
+        + '</div>';
+      return;
+    }
+
+    container.innerHTML = '<div class="grid grid--2">' + published.map(function (f) {
+      var closed = f.closes_at && new Date(f.closes_at) < new Date();
+      var statusBadge = closed
+        ? '<span class="badge badge--danger">Closed</span>'
+        : '<span class="badge badge--success">Open</span>';
+
+      return '<div class="card">'
+        + '<div class="flex-between mb-4">'
+        + '<h3 class="card__title">' + escapeHtml(f.title) + '</h3>'
+        + statusBadge
+        + '</div>'
+        + '<p class="text-sm text-muted" style="margin-bottom:var(--space-4)">'
+        + (f.description ? escapeHtml(f.description) : 'No description') + '</p>'
+        + '<div class="card__meta">'
+        + '<span>📝 ' + f.response_count + ' responses</span>'
+        + '<span>❓ ' + f.question_count + ' questions</span>'
+        + (f.closes_at ? '<span>📅 Closes ' + app.formatDate(f.closes_at) + '</span>' : '')
+        + '</div>'
+        + '<div style="margin-top:var(--space-4); display:flex; gap:var(--space-2)">'
+        + (closed ? '' : '<a href="/form/' + f.id + '" class="btn btn--primary btn--sm">Fill Form</a>')
+        + '<a href="/leaderboard/' + f.id + '" class="btn btn--secondary btn--sm">Leaderboard</a>'
+        + '</div>'
+        + '</div>';
+    }).join('') + '</div>';
+  }).catch(function (err) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-state__title">Failed to load forms</div></div>';
+  });
+
+  function escapeHtml(str) {
+    var div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+})();
+</script>
+{% endblock %}

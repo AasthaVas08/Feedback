@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Feedback{% endblock %} — Feedback Platform</title>
+  <!-- Inter font: loaded via JS to avoid blocking render in restricted environments -->
+  <script>
+    try{var l=document.createElement('link');l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';l.onerror=function(){};document.head.appendChild(l);}catch(e){}
+  </script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/components.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/pages.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar">
+    <a href="{{ url_for('views.home') }}" class="navbar__brand">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+      </svg>
+      Feedback
+    </a>
+
+    <button class="navbar__toggle" onclick="document.querySelector('.navbar__links').classList.toggle('open')" aria-label="Toggle navigation">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+    </button>
+
+    <ul class="navbar__links">
+      <li><a href="{{ url_for('views.home') }}" class="{% if request.endpoint == 'views.home' %}active{% endif %}">Home</a></li>
+      <li><a href="{{ url_for('views.dashboard') }}" class="{% if request.endpoint == 'views.dashboard' %}active{% endif %}">Dashboard</a></li>
+      <li><a href="{{ url_for('views.form_builder') }}" class="{% if request.endpoint == 'views.form_builder' %}active{% endif %}">Create Form</a></li>
+    </ul>
+
+    <div class="navbar__actions">
+      <div class="user-selector">
+        <span>User:</span>
+        <select id="currentUser" onchange="window.FeedbackApp.setUser(this.value)">
+          <!-- Populated by JS -->
+        </select>
+      </div>
+      <button class="theme-toggle" onclick="window.FeedbackApp.toggleTheme()" aria-label="Toggle theme">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Toast container -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <!-- Main content -->
+  <main class="page">
+    <div class="container">
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer style="text-align:center; padding:var(--space-6); font-size:var(--text-xs); color:var(--color-text-muted); border-top:1px solid var(--color-border);">
+    Feedback Platform &copy; 2026 — Built with Flask
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
