@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Leaderboard{% endblock %}
+
+{% block content %}
+<div id="leaderboardContainer">
+  <div class="page__header">
+    <div class="skeleton skeleton--title" style="width:200px"></div>
+    <div class="skeleton skeleton--text" style="width:300px"></div>
+  </div>
+  <div class="card">
+    <div class="skeleton skeleton--block"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var app = window.FeedbackApp;
+  var formId = '{{ form_id }}';
+  var container = document.getElementById('leaderboardContainer');
+
+  // Fetch form info and leaderboard in parallel
+  Promise.all([
+    app.api('/api/forms/' + formId),
+    app.api('/api/forms/' + formId + '/rewards')
+  ]).then(function (results) {
+    var form = results[0];
+    var rewards = results[1];
+    render(form, rewards);
+  }).catch(function () {
+    container.innerHTML = '<div class="empty-state"><div class="empty-state__icon">😕</div>'
+      + '<div class="empty-state__title">Could not load leaderboard</div></div>';
+  });
+
+  function render(form, rewards) {
+    var board = rewards.leaderboard || [];
+    var html = '<div class="page__header">'
+      + '<div class="flex-between">'
+      + '<div><h1 class="page__title">🏆 Leaderboard</h1>'
+      + '<p class="page__subtitle">' + esc(form.title) + '</p></div>'
+      + '<div class="flex gap-2">';
+
+    // Calculate rewards button (for owners)
+    html += '<button class="btn btn--secondary btn--sm" id="btnCalcRewards" onclick="calcRewards()">Recalculate Rewards</button>';
+    html += '<a href="/form/' + formId + '" class="btn btn--ghost btn--sm">Fill Form</a>';
+    html += '</div></div></div>';
+
+    // Summary stats
+    html += '<div class="grid grid--3 mb-6">'
+      + '<div class="card stat-card"><div class="stat-card__value">' + (board.length || 0) + '</div><div class="stat-card__label">Respondents</div></div>'
+      + '<div class="card stat-card"><div class="stat-card__value">' + (board.length ? board[0].reward_points : '—') + '</div><div class="stat-card__label">Top Reward</div></div>'
+      + '<div class="card stat-card"><div class="stat-card__value">' + (board.length ? board[board.length - 1].reward_points : '—') + '</div><div class="stat-card__label">Min Reward</div></div>'
+      + '</div>';
+
+    if (!board.length) {
+      html += '<div class="card"><div class="empty-state">'
+        + '<div class="empty-state__icon">🏅</div>'
+        + '<div class="empty-state__title">No rewards calculated yet</div>'
+        + '<div class="empty-state__desc">Rewards are calculated after responses are submitted. Click "Recalculate Rewards" to compute them.</div>'
+        + '</div></div>';
+    } else {
+      html += '<div class="card card--flat" style="padding:0; overflow:hidden">';
+      board.forEach(function (entry) {
+        var rankClass = 'rank-badge--default';
+        if (entry.rank === 1) rankClass = 'rank-badge--gold';
+        else if (entry.rank === 2) rankClass = 'rank-badge--silver';
+        else if (entry.rank === 3) rankClass = 'rank-badge--bronze';
+
+        html += '<div class="leaderboard-item">'
+          + '<div class="rank-badge ' + rankClass + '">'
+          + (entry.rank <= 3 ? ['🥇', '🥈', '🥉'][entry.rank - 1] : '#' + entry.rank)
+          + '</div>'
+          + '<div class="leaderboard-info">'
+          + '<div class="leaderboard-info__name">' + esc(entry.user_name || 'Unknown') + '</div>'
+          + '<div class="leaderboard-info__email">' + esc(entry.user_email || '') + '</div>'
+          + '</div>'
+          + '<div class="leaderboard-time">' + (entry.calculated_at ? app.formatDateTime(entry.calculated_at) : '') + '</div>'
+          + '<div class="leaderboard-points">' + entry.reward_points + ' pts</div>'
+          + '</div>';
+      });
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+  }
+
+  window.calcRewards = function () {
+    var btn = document.getElementById('btnCalcRewards');
+    if (btn) { btn.disabled = true; btn.textContent = 'Calculating…'; }
+    app.api('/api/forms/' + formId + '/rewards/calculate', 'POST').then(function () {
+      app.toast('Rewards recalculated!', 'success');
+      // Reload
+      return Promise.all([
+        app.api('/api/forms/' + formId),
+        app.api('/api/forms/' + formId + '/rewards')
+      ]);
+    }).then(function (results) {
+      render(results[0], results[1]);
+    }).catch(function (err) {
+      app.toast(err.data ? err.data.error : 'Failed to calculate rewards', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Recalculate Rewards'; }
+    });
+  };
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+})();
+</script>
+{% endblock %}

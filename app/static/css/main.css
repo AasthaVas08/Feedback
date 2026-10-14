@@ -1,0 +1,65 @@
+/* ── Reset & Base ──────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: var(--leading-normal);
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body { min-height: 100vh; }
+
+a { color: var(--color-accent-text); text-decoration: none; transition: color var(--duration-fast) var(--ease-out); }
+a:hover { color: var(--color-accent-hover); }
+
+img, svg { display: block; max-width: 100%; }
+
+/* ── Focus ring ────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* ── Navbar ────────────────────────────────────────────────────── */
+.navbar {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: space-between;
+  height: var(--nav-height);
+  padding: 0 var(--space-6);
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  backdrop-filter: blur(8px);
+}
+.navbar__brand {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-lg); font-weight: var(--weight-bold);
+  color: var(--color-text);
+}
+.navbar__brand svg { width: 24px; height: 24px; color: var(--color-accent); }
+.navbar__links { display: flex; gap: var(--space-6); list-style: none; }
+.navbar__links a {
+  font-size: var(--text-sm); font-weight: var(--weight-medium);
+  color: var(--color-text-secondary);
+  padding: var(--space-2) 0;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+.navbar__links a:hover, .navbar__links a.active { color: var(--color-text); }
+.navbar__actions { display: flex; align-items: center; gap: var(--space-3); }
+
+/* Mobile nav toggle */
+.navbar__toggle { display: none; background: none; border: none; cursor: pointer; color: var(--color-text); padding: var(--space-2); }
+@media (max-width: 768px) {
+  .navbar__toggle { display: block; }
+  .navbar__links {
+    display: none; flex-direction: column; position: absolute;
+    top: var(--nav-height); left: 0; right: 0;
+    background: var(--color-surface); border-bottom: 1px solid var(--color-border);
+    padding: var(--space-4) var(--space-6); gap: var(--space-4);
+  }
+  .navbar__links.open { display: flex; }
+}

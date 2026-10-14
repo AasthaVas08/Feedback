@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block head %}
+<script src="{{ url_for('static', filename='js/chart.umd.js') }}"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page__header">
+  <h1 class="page__title">Dashboard</h1>
+  <p class="page__subtitle">Overview of all forms, response rates, and reward distributions.</p>
+</div>
+
+<!-- Stat cards -->
+<div class="grid grid--4 mb-6" id="statCards">
+  <div class="card stat-card"><div class="skeleton skeleton--title" style="margin:0 auto"></div></div>
+  <div class="card stat-card"><div class="skeleton skeleton--title" style="margin:0 auto"></div></div>
+  <div class="card stat-card"><div class="skeleton skeleton--title" style="margin:0 auto"></div></div>
+  <div class="card stat-card"><div class="skeleton skeleton--title" style="margin:0 auto"></div></div>
+</div>
+
+<!-- Charts row -->
+<div class="grid grid--2 mb-6">
+  <div class="card">
+    <h3 style="font-size:var(--text-base); font-weight:var(--weight-semibold); margin-bottom:var(--space-4)">Response Rates</h3>
+    <div class="chart-container"><canvas id="responseChart"></canvas></div>
+  </div>
+  <div class="card">
+    <h3 style="font-size:var(--text-base); font-weight:var(--weight-semibold); margin-bottom:var(--space-4)">Reward Distribution</h3>
+    <div class="chart-container"><canvas id="rewardChart"></canvas></div>
+  </div>
+</div>
+
+<!-- Forms table -->
+<div class="card">
+  <h3 style="font-size:var(--text-base); font-weight:var(--weight-semibold); margin-bottom:var(--space-4)">All Forms</h3>
+  <div class="table-wrap" id="formsTable">
+    <div class="skeleton skeleton--block"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var app = window.FeedbackApp;
+  var responseChartInstance = null;
+  var rewardChartInstance = null;
+
+  app.api('/api/dashboard').then(function (data) {
+    renderStats(data);
+    renderCharts(data.forms);
+    renderTable(data.forms);
+  }).catch(function () {
+    document.getElementById('statCards').innerHTML = '<div class="empty-state" style="grid-column:1/-1"><div class="empty-state__title">Failed to load dashboard</div></div>';
+  });
+
+  function renderStats(d) {
+    document.getElementById('statCards').innerHTML =
+      statCard(d.total_forms, 'Total Forms', '📋') +
+      statCard(d.published_forms, 'Published', '✅') +
+      statCard(d.total_responses, 'Total Responses', '📝') +
+      statCard(d.total_employees, 'Employees', '👥');
+  }
+
+  function statCard(val, label, icon) {
+    return '<div class="card stat-card">'
+      + '<div style="font-size:1.5rem; margin-bottom:var(--space-2)">' + icon + '</div>'
+      + '<div class="stat-card__value">' + val + '</div>'
+      + '<div class="stat-card__label">' + label + '</div></div>';
+  }
+
+  function renderCharts(forms) {
+    var published = forms.filter(function (f) { return f.is_published; });
+    var labels = published.map(function (f) { return truncate(f.title, 20); });
+    var rates = published.map(function (f) { return f.response_rate; });
+    var counts = published.map(function (f) { return f.response_count; });
+
+    // Shared Chart.js defaults for theme
+    var textColor = getComputedStyle(document.documentElement).getPropertyValue('--color-text-secondary').trim() || '#6b7280';
+    var gridColor = getComputedStyle(document.documentElement).getPropertyValue('--color-border').trim() || 'rgba(0,0,0,0.1)';
+
+    // Response rate chart
+    var ctx1 = document.getElementById('responseChart').getContext('2d');
+    responseChartInstance = new Chart(ctx1, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Response Rate (%)',
+          data: rates,
+          backgroundColor: 'rgba(79, 70, 229, 0.7)',
+          borderColor: 'rgba(79, 70, 229, 1)',
+          borderWidth: 1,
+          borderRadius: 4
+        }, {
+          label: 'Responses',
+          data: counts,
+          backgroundColor: 'rgba(99, 102, 241, 0.3)',
+          borderColor: 'rgba(99, 102, 241, 0.8)',
+          borderWidth: 1,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: textColor, font: { family: 'Inter' } } } },
+        scales: {
+          x: { ticks: { color: textColor, font: { family: 'Inter', size: 11 } }, grid: { color: gridColor } },
+          y: { ticks: { color: textColor, font: { family: 'Inter', size: 11 } }, grid: { color: gridColor }, beginAtZero: true }
+        }
+      }
+    });
+
+    // Reward distribution chart
+    var withRewards = published.filter(function (f) { return f.rewards_calculated; });
+    var rwLabels = withRewards.map(function (f) { return truncate(f.title, 20); });
+    var rwMax = withRewards.map(function (f) { return f.reward_distribution ? f.reward_distribution.max_points : 0; });
+    var rwAvg = withRewards.map(function (f) { return f.reward_distribution ? f.reward_distribution.avg_points : 0; });
+    var rwMin = withRewards.map(function (f) { return f.reward_distribution ? f.reward_distribution.min_points : 0; });
+
+    var ctx2 = document.getElementById('rewardChart').getContext('2d');
+    rewardChartInstance = new Chart(ctx2, {
+      type: 'bar',
+      data: {
+        labels: rwLabels.length ? rwLabels : ['No data'],
+        datasets: [
+          { label: 'Max Points', data: rwMax.length ? rwMax : [0], backgroundColor: 'rgba(5, 150, 105, 0.7)', borderRadius: 4 },
+          { label: 'Avg Points', data: rwAvg.length ? rwAvg : [0], backgroundColor: 'rgba(37, 99, 235, 0.7)', borderRadius: 4 },
+          { label: 'Min Points', data: rwMin.length ? rwMin : [0], backgroundColor: 'rgba(217, 119, 6, 0.7)', borderRadius: 4 }
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { labels: { color: textColor, font: { family: 'Inter' } } } },
+        scales: {
+          x: { ticks: { color: textColor, font: { family: 'Inter', size: 11 } }, grid: { color: gridColor } },
+          y: { ticks: { color: textColor, font: { family: 'Inter', size: 11 } }, grid: { color: gridColor }, beginAtZero: true }
+        }
+      }
+    });
+  }
+
+  function renderTable(forms) {
+    if (!forms.length) {
+      document.getElementById('formsTable').innerHTML = '<div class="empty-state"><div class="empty-state__title">No forms yet</div></div>';
+      return;
+    }
+    var html = '<table class="table"><thead><tr>'
+      + '<th>Title</th><th>Status</th><th>Responses</th><th>Rate</th><th>Rewards</th><th>Created</th><th>Actions</th>'
+      + '</tr></thead><tbody>';
+
+    forms.forEach(function (f) {
+      var status = f.is_published
+        ? '<span class="badge badge--success">Published</span>'
+        : '<span class="badge badge--neutral">Draft</span>';
+      var rate = f.is_published
+        ? '<div class="progress" style="width:100px;display:inline-block;vertical-align:middle"><div class="progress__bar" style="width:' + Math.min(f.response_rate, 100) + '%"></div></div> <span class="text-sm">' + f.response_rate + '%</span>'
+        : '—';
+      var rewards = f.rewards_calculated
+        ? '<span class="badge badge--accent">' + f.reward_distribution.avg_points + ' avg</span>'
+        : '<span class="text-muted text-sm">—</span>';
+
+      html += '<tr>'
+        + '<td><strong>' + esc(f.title) + '</strong></td>'
+        + '<td>' + status + '</td>'
+        + '<td class="numeric">' + f.response_count + '</td>'
+        + '<td>' + rate + '</td>'
+        + '<td>' + rewards + '</td>'
+        + '<td class="text-sm text-muted">' + app.formatDate(f.created_at) + '</td>'
+        + '<td><div class="flex gap-2">'
+        + (f.is_published ? '<a href="/form/' + f.id + '" class="btn btn--ghost btn--sm">Fill</a>' : '')
+        + '<a href="/leaderboard/' + f.id + '" class="btn btn--ghost btn--sm">Board</a>'
+        + '</div></td></tr>';
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('formsTable').innerHTML = html;
+  }
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function truncate(s, n) { return s.length > n ? s.substring(0, n) + '…' : s; }
+})();
+</script>
+{% endblock %}

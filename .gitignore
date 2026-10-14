@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Database
+instance/
+*.db
+*.sqlite3
+
+# Environment
+.env
+
+# Flask-Migrate
+migrations/versions/__pycache__/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+
+# Node (Chart.js was installed via npm; the UMD bundle is vendored in static/js/)
+node_modules/
+package.json
+package-lock.json

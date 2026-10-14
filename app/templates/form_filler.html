@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+{% block title %}Fill Form{% endblock %}
+
+{% block content %}
+<div id="fillerContainer">
+  <div class="filler-card card card--flat">
+    <div class="skeleton skeleton--block" style="height:120px; border-radius:var(--radius-lg) var(--radius-lg) 0 0"></div>
+    <div style="padding:var(--space-6)">
+      <div class="skeleton skeleton--title"></div>
+      <div class="skeleton skeleton--text"></div>
+      <div class="skeleton skeleton--text" style="width:80%"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var app = window.FeedbackApp;
+  var formId = '{{ form_id }}';
+  var container = document.getElementById('fillerContainer');
+  var formData = null;
+  var answers = {};
+
+  app.api('/api/forms/' + formId).then(function (form) {
+    formData = form;
+    if (!form.is_published) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state__icon">🔒</div>'
+        + '<div class="empty-state__title">This form is not published yet</div></div>';
+      return;
+    }
+    var closed = form.closes_at && new Date(form.closes_at) < new Date();
+    if (closed) {
+      container.innerHTML = '<div class="empty-state"><div class="empty-state__icon">⏰</div>'
+        + '<div class="empty-state__title">This form has closed</div>'
+        + '<div class="empty-state__desc">The deadline was ' + app.formatDate(form.closes_at) + '</div>'
+        + '<a href="/leaderboard/' + formId + '" class="btn btn--secondary">View Leaderboard</a></div>';
+      return;
+    }
+    renderForm(form);
+  }).catch(function () {
+    container.innerHTML = '<div class="empty-state"><div class="empty-state__icon">😕</div>'
+      + '<div class="empty-state__title">Form not found</div></div>';
+  });
+
+  function renderForm(form) {
+    var qs = (form.questions || []).sort(function (a, b) { return a.order - b.order; });
+    var html = '<div class="filler-card card card--flat">'
+      + '<div class="filler-header">'
+      + '<h1 class="filler-header__title">' + esc(form.title) + '</h1>'
+      + (form.description ? '<p class="filler-header__desc">' + esc(form.description) + '</p>' : '')
+      + (form.closes_at ? '<p class="filler-header__desc" style="margin-top:var(--space-2); opacity:0.7">⏰ Closes ' + app.formatDate(form.closes_at) + '</p>' : '')
+      + '</div><div class="filler-body"><form id="responseForm">';
+
+    qs.forEach(function (q, i) {
+      html += '<div class="filler-question" data-qid="' + q.id + '">'
+        + '<p class="filler-question__label"><span class="filler-question__number">' + (i + 1) + '.</span> '
+        + esc(q.question_text) + ' <span class="required">*</span></p>';
+
+      if (q.question_type === 'text') {
+        html += '<textarea class="form-textarea q-input" data-qid="' + q.id + '" rows="3" placeholder="Your answer…"></textarea>';
+      } else if (q.question_type === 'rating') {
+        html += '<div class="rating-group">';
+        for (var r = 1; r <= 5; r++) {
+          html += '<button type="button" class="rating-btn" data-qid="' + q.id + '" data-val="' + r + '" onclick="Filler.setRating(' + q.id + ',' + r + ')">' + r + '</button>';
+        }
+        html += '</div>';
+      } else if (q.question_type === 'multiple_choice') {
+        (q.options || []).forEach(function (opt) {
+          html += '<div class="form-check"><input type="radio" name="q-' + q.id + '" value="' + escAttr(opt) + '" '
+            + 'onchange="Filler.setAnswer(' + q.id + ',this.value)">'
+            + '<label>' + esc(opt) + '</label></div>';
+        });
+      } else if (q.question_type === 'checkbox') {
+        (q.options || []).forEach(function (opt) {
+          html += '<div class="form-check"><input type="checkbox" name="q-' + q.id + '" value="' + escAttr(opt) + '" '
+            + 'onchange="Filler.toggleCheckbox(' + q.id + ',this.value,this.checked)">'
+            + '<label>' + esc(opt) + '</label></div>';
+        });
+      }
+
+      html += '<p class="form-error hidden" id="err-' + q.id + '">This question is required</p></div>';
+    });
+
+    html += '<div style="margin-top:var(--space-6)">'
+      + '<button type="submit" class="btn btn--primary" id="btnSubmit">Submit Response</button></div>'
+      + '</form></div></div>';
+
+    container.innerHTML = html;
+
+    document.getElementById('responseForm').addEventListener('submit', function (e) {
+      e.preventDefault(); submitForm(qs);
+    });
+  }
+
+  function submitForm(qs) {
+    // Client-side validation
+    var valid = true;
+    qs.forEach(function (q) {
+      var errEl = document.getElementById('err-' + q.id);
+      if (!answers[q.id] || (typeof answers[q.id] === 'string' && !answers[q.id].trim())) {
+        // Check DOM for text inputs
+        var input = document.querySelector('.q-input[data-qid="' + q.id + '"]');
+        if (input && input.value.trim()) { answers[q.id] = input.value.trim(); }
+        else { errEl.classList.remove('hidden'); valid = false; }
+      } else { errEl.classList.add('hidden'); }
+    });
+    if (!valid) { app.toast('Please answer all questions', 'error'); return; }
+
+    var btn = document.getElementById('btnSubmit');
+    btn.disabled = true; btn.textContent = 'Submitting…';
+
+    var body = {
+      respondent_id: app.getUserId(),
+      answers: qs.map(function (q) {
+        return { question_id: q.id, answer_value: typeof answers[q.id] === 'object' ? JSON.stringify(answers[q.id]) : String(answers[q.id]) };
+      })
+    };
+
+    app.api('/api/forms/' + formId + '/responses', 'POST', body).then(function () {
+      container.innerHTML = '<div class="empty-state">'
+        + '<div class="empty-state__icon">✅</div>'
+        + '<div class="empty-state__title">Response submitted!</div>'
+        + '<div class="empty-state__desc">Thank you for your feedback.</div>'
+        + '<div class="flex-center gap-3">'
+        + '<a href="/" class="btn btn--secondary">Back to Home</a>'
+        + '<a href="/leaderboard/' + formId + '" class="btn btn--primary">View Leaderboard</a>'
+        + '</div></div>';
+      app.toast('Response submitted successfully!', 'success');
+    }).catch(function (err) {
+      btn.disabled = false; btn.textContent = 'Submit Response';
+      app.toast(err.data ? err.data.error : 'Submission failed', 'error');
+    });
+  }
+
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function escAttr(s) { return (s || '').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+  /* Expose to inline handlers */
+  window.Filler = {
+    setRating: function (qid, val) {
+      answers[qid] = String(val);
+      document.querySelectorAll('.rating-btn[data-qid="' + qid + '"]').forEach(function (btn) {
+        btn.classList.toggle('selected', parseInt(btn.dataset.val) <= val);
+      });
+      var errEl = document.getElementById('err-' + qid);
+      if (errEl) errEl.classList.add('hidden');
+    },
+    setAnswer: function (qid, val) {
+      answers[qid] = val;
+      var errEl = document.getElementById('err-' + qid);
+      if (errEl) errEl.classList.add('hidden');
+    },
+    toggleCheckbox: function (qid, val, checked) {
+      if (!answers[qid]) answers[qid] = [];
+      if (checked) { if (answers[qid].indexOf(val) === -1) answers[qid].push(val); }
+      else { answers[qid] = answers[qid].filter(function (v) { return v !== val; }); }
+      if (!answers[qid].length) delete answers[qid];
+      var errEl = document.getElementById('err-' + qid);
+      if (errEl && answers[qid]) errEl.classList.add('hidden');
+    }
+  };
+})();
+</script>
+{% endblock %}
